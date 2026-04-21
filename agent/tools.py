@@ -438,43 +438,70 @@ def interpretar_pnr(localizador: str) -> str:
             f"PNRs disponibles en el sistema de prueba: {', '.join(SAMPLE_PNRS.keys())}"
         )
 
+    estado = pnr.get("estado") or pnr.get("status", "N/A")
     lines = [
         f"*** PNR — {loc} ***",
-        f"Estado: {pnr.get('status', 'N/A')}",
-        "",
-        "PASAJEROS (NM):",
+        f"Estado: {estado}",
     ]
-    for i, pax in enumerate(pnr.get("passengers", []), 1):
-        lines.append(f"  {i}. {pax.get('name')} — {pax.get('ptc')} — Tkt: {pax.get('ticket', 'SIN TICKET')}")
+    agente = pnr.get("agente") or pnr.get("agent")
+    fecha = pnr.get("fecha_creacion") or pnr.get("created")
+    if fecha:
+        lines.append(f"Creado:  {fecha}  Agente: {agente or 'N/A'}")
+
+    lines += ["", "PASAJEROS (NM):"]
+    paxs = pnr.get("pasajeros") or pnr.get("passengers", [])
+    for i, pax in enumerate(paxs, 1):
+        # Support both Spanish and English keys
+        name = (
+            pax.get("name")
+            or f"{pax.get('apellido','')}/{pax.get('nombre','')} {pax.get('titulo','')}"
+        ).strip()
+        ptc = pax.get("ptc") or pax.get("tipo", "ADT")
+        tkt = pax.get("ticket", "SIN TICKET")
+        fqtv = f"  FQTV: {pax['fqtv']}" if pax.get("fqtv") else ""
+        lines.append(f"  {i}. {name} — {ptc} — Tkt: {tkt}{fqtv}")
 
     lines += ["", "ITINERARIO (AIR):"]
-    for seg in pnr.get("segments", []):
-        lines.append(
-            f"  {seg['flight']} {seg['class']} {seg['date']} "
-            f"{seg['from']}{seg['dep']} {seg['to']}{seg['arr']} "
-            f"ST:{seg['status']} SEG:{seg.get('seg_status','OK')}"
-        )
+    segs = pnr.get("segmentos") or pnr.get("segments", [])
+    for seg in segs:
+        vuelo   = seg.get("flight") or seg.get("vuelo", "")
+        clase   = seg.get("class")  or seg.get("clase", "")
+        fecha_s = seg.get("date")   or seg.get("fecha", "")
+        orig    = seg.get("from")   or seg.get("origen", "")
+        dst     = seg.get("to")     or seg.get("destino", "")
+        dep     = seg.get("dep")    or seg.get("hora_salida", "")
+        arr     = seg.get("arr")    or seg.get("hora_llegada", "")
+        st      = seg.get("status", "HK")
+        lines.append(f"  {vuelo} {clase} {fecha_s} {orig}{dep} {dst}{arr} ST:{st}")
 
-    if pnr.get("contact"):
-        lines += ["", f"CONTACTO (AP): {pnr['contact']}"]
-    if pnr.get("time_limit"):
-        lines += [f"TICKETING (TK): TAW/{pnr['time_limit']}"]
-    if pnr.get("fare"):
-        f = pnr["fare"]
+    contacto = pnr.get("contacto") or pnr.get("contact")
+    if contacto:
+        lines += ["", f"CONTACTO (AP): {contacto}"]
+
+    tl = pnr.get("time_limit") or pnr.get("tiempo_limite")
+    if tl:
+        lines += [f"TICKETING (TK): TAW/{tl}"]
+
+    fare = pnr.get("tarifa") or pnr.get("fare")
+    if fare:
         lines += [
             "", "TARIFA (FP/FE):",
-            f"  Base:   USD {f.get('base', 0):,.0f}",
-            f"  Tasas:  USD {f.get('taxes', 0):,.0f}",
-            f"  Total:  USD {f.get('total', 0):,.0f}",
-            f"  Forma pago: {f.get('form_of_payment', 'N/A')}",
+            f"  Base:   USD {fare.get('base', fare.get('tarifa_base', 0)):,.0f}",
+            f"  Tasas:  USD {fare.get('taxes', fare.get('tasas', 0)):,.0f}",
+            f"  Total:  USD {fare.get('total', 0):,.0f}",
+            f"  Forma pago: {fare.get('form_of_payment', fare.get('forma_pago', 'N/A'))}",
         ]
-    if pnr.get("ssrs"):
+
+    ssrs = pnr.get("ssrs") or pnr.get("servicios_especiales", [])
+    if ssrs:
         lines += ["", "SSR / OSI:"]
-        for ssr in pnr["ssrs"]:
+        for ssr in ssrs:
             lines.append(f"  {ssr}")
-    if pnr.get("remarks"):
+
+    remarks = pnr.get("remarks") or pnr.get("observaciones", [])
+    if remarks:
         lines += ["", "OBSERVACIONES (RM):"]
-        for r in pnr["remarks"]:
+        for r in remarks:
             lines.append(f"  {r}")
 
     lines += ["", "*** END OF PNR ***"]
