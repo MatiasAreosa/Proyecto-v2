@@ -35,8 +35,55 @@ class AirlineAgent:
             tool_results = self._execute_tools(response.content)
             self.messages.append({"role": "user", "content": tool_results})
 
+    def chat_web(self, user_input: str) -> tuple[str, list[dict]]:
+        """Web version: returns (response_text, tool_outputs) without printing."""
+        self.messages.append({"role": "user", "content": user_input})
+
+        tool_outputs: list[dict] = []
+
+        while True:
+            response = self._collect_response()
+            self.messages.append({"role": "assistant", "content": response.content})
+
+            if response.stop_reason != "tool_use":
+                break
+
+            tool_results = []
+            for block in response.content:
+                if block.type != "tool_use":
+                    continue
+                output = self._run_tool(block.name, block.input)
+                tool_outputs.append({"name": block.name, "result": output})
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": block.id,
+                    "content": output,
+                })
+            self.messages.append({"role": "user", "content": tool_results})
+
+        text = ""
+        for block in response.content:
+            if hasattr(block, "text"):
+                text += block.text
+
+        return text, tool_outputs
+
     # ------------------------------------------------------------------
-    # Streaming call
+    # API calls
+    # ------------------------------------------------------------------
+
+    def _collect_response(self) -> anthropic.types.Message:
+        return self.client.messages.create(
+            model=MODEL,
+            max_tokens=4096,
+            thinking={"type": "adaptive"},
+            system=[{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
+            tools=TOOL_DEFINITIONS,
+            messages=self.messages,
+        )
+
+    # ------------------------------------------------------------------
+    # Streaming call (CLI)
     # ------------------------------------------------------------------
 
     def _stream_and_collect(self) -> anthropic.types.Message:
